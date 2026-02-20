@@ -2,194 +2,152 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>TX API TABLE PRO</title>
+<title>TX Prediction AI</title>
 
 <style>
 body{
-background:#0b0b1f;
-font-family:Arial;
+background:#0a0f1f;
 color:#00ffff;
+font-family:Arial;
 text-align:center;
 }
 
-.container{
-width:98%;
-max-width:1000px;
+.box{
+max-width:600px;
 margin:auto;
 padding:20px;
 }
 
-table{
-width:100%;
-border-collapse:collapse;
-margin-top:15px;
-}
-
-th,td{
-padding:8px;
-border:1px solid #00ffff;
-font-size:14px;
-}
-
-th{
-background:#001f2f;
-cursor:pointer;
-}
-
-tr:nth-child(even){
-background:#000814;
-}
-
-input{
-padding:8px;
-margin:5px;
-border-radius:8px;
-border:none;
-}
-
 button{
-padding:8px 15px;
-margin:5px;
+padding:10px 20px;
+margin:10px;
 border:none;
-border-radius:8px;
+border-radius:10px;
 background:linear-gradient(45deg,#00ffff,#ff00ff);
 font-weight:bold;
+}
+
+.result{
+margin-top:20px;
+padding:20px;
+border:1px solid #00ffff;
+border-radius:15px;
 }
 </style>
 </head>
 
 <body>
 
-<div class="container">
+<div class="box">
 
-<h2>📊 TX API TABLE PRO</h2>
+<h2>🤖 TX PREDICTION AI</h2>
 
-<input type="text" id="search" placeholder="Tìm kiếm..." onkeyup="filterTable()">
-<br>
+<button onclick="predict()">Dự Đoán</button>
 
-<button onclick="loadData()">Lấy Dữ Liệu</button>
-<button onclick="exportCSV()">Xuất CSV</button>
-<button onclick="exportJSON()">Xuất JSON</button>
-<button onclick="toggleAuto()">Auto 5s</button>
-
-<div id="status"></div>
-
-<table id="txTable">
-<thead>
-<tr>
-<th onclick="sortTable(0)">Phiên</th>
-<th onclick="sortTable(1)">MD5</th>
-<th onclick="sortTable(2)">Xúc Xắc</th>
-<th onclick="sortTable(3)">Tổng</th>
-<th onclick="sortTable(4)">KQ</th>
-</tr>
-</thead>
-<tbody></tbody>
-</table>
+<div class="result" id="output"></div>
 
 </div>
 
 <script>
 
-let auto=false;
-let interval;
-let globalData=[];
-
-const proxies=[
-"https://corsproxy.io/?",
-"https://api.allorigins.win/raw?url="
-];
-
+const proxy="https://corsproxy.io/?";
 const api="https://wtxmd52.tele68.com/v1/txmd5/sessions";
 
-async function fetchWithProxy(){
-for(let proxy of proxies){
-try{
+async function getData(){
 let res=await fetch(proxy+api);
-if(res.ok){
-document.getElementById("status").innerHTML="✅ Kết nối thành công";
-return await res.json();
-}
-}catch(e){}
-}
-document.getElementById("status").innerHTML="❌ Không lấy được API";
-return [];
+let data=await res.json();
+return data.list || data;
 }
 
-async function loadData(){
-let data=await fetchWithProxy();
-if(!data.length) return;
+function analyze(data){
 
-globalData=data.slice(0,100);
-renderTable(globalData);
-}
+let recent=data.slice(0,50);
 
-function renderTable(data){
-let tbody=document.querySelector("#txTable tbody");
-tbody.innerHTML="";
+let tai=0;
+let xiu=0;
 
-data.forEach(item=>{
-let row=`
-<tr>
-<td>${item.id}</td>
-<td>${item._id}</td>
-<td>${item.dices.join("-")}</td>
-<td>${item.point}</td>
-<td>${item.resultTruyenThong}</td>
-</tr>
-`;
-tbody.innerHTML+=row;
+recent.forEach(item=>{
+if(item.resultTruyenThong==="TAI") tai++;
+else xiu++;
 });
-}
 
-function filterTable(){
-let keyword=document.getElementById("search").value.toLowerCase();
-let filtered=globalData.filter(item=>
-item.id.toString().includes(keyword) ||
-item._id.includes(keyword) ||
-item.resultTruyenThong.toLowerCase().includes(keyword)
-);
-renderTable(filtered);
-}
+let percentTai=(tai/recent.length)*100;
+let percentXiu=(xiu/recent.length)*100;
 
-function sortTable(n){
-let rows=[...document.querySelectorAll("#txTable tbody tr")];
-rows.sort((a,b)=>{
-return a.cells[n].innerText.localeCompare(b.cells[n].innerText,undefined,{numeric:true});
-});
-let tbody=document.querySelector("#txTable tbody");
-tbody.innerHTML="";
-rows.forEach(r=>tbody.appendChild(r));
-}
+// Kiểm tra streak
+let streakCount=1;
+let last=recent[0].resultTruyenThong;
 
-function exportCSV(){
-let csv="Phiên,MD5,XucXac,Tong,KQ\n";
-globalData.forEach(item=>{
-csv+=`${item.id},${item._id},${item.dices.join("-")},${item.point},${item.resultTruyenThong}\n`;
-});
-downloadFile(csv,"tx-data.csv","text/csv");
-}
-
-function exportJSON(){
-let json=JSON.stringify(globalData,null,2);
-downloadFile(json,"tx-data.json","application/json");
-}
-
-function downloadFile(content,filename,type){
-let blob=new Blob([content],{type});
-let a=document.createElement("a");
-a.href=URL.createObjectURL(blob);
-a.download=filename;
-a.click();
-}
-
-function toggleAuto(){
-auto=!auto;
-if(auto){
-interval=setInterval(loadData,5000);
+for(let i=1;i<recent.length;i++){
+if(recent[i].resultTruyenThong===last){
+streakCount++;
 }else{
-clearInterval(interval);
+break;
 }
+}
+
+// Kiểm tra đảo liên tục 1-1
+let dao=true;
+for(let i=1;i<6;i++){
+if(recent[i].resultTruyenThong===recent[i-1].resultTruyenThong){
+dao=false;
+break;
+}
+}
+
+// Tính điểm quyết định
+let scoreTai=percentTai;
+let scoreXiu=percentXiu;
+
+// trọng số phiên gần nhất
+if(last==="TAI") scoreTai+=5;
+else scoreXiu+=5;
+
+// nếu streak >=3 có xu hướng đảo
+if(streakCount>=3){
+if(last==="TAI") scoreXiu+=10;
+else scoreTai+=10;
+}
+
+// nếu cầu 1-1 → tiếp tục đảo
+if(dao){
+if(last==="TAI") scoreXiu+=15;
+else scoreTai+=15;
+}
+
+let prediction=scoreTai>scoreXiu?"TAI":"XIU";
+let confidence=Math.abs(scoreTai-scoreXiu).toFixed(2);
+
+return {
+prediction,
+confidence,
+percentTai:percentTai.toFixed(2),
+percentXiu:percentXiu.toFixed(2),
+streak:last+" x"+streakCount
+};
+}
+
+async function predict(){
+
+document.getElementById("output").innerHTML="Đang tính...";
+
+try{
+
+let data=await getData();
+let result=analyze(data);
+
+document.getElementById("output").innerHTML=`
+<h3>Dự đoán: ${result.prediction}</h3>
+<p>Độ chênh lệch điểm: ${result.confidence}</p>
+<p>% Tài: ${result.percentTai}%</p>
+<p>% Xỉu: ${result.percentXiu}%</p>
+<p>Streak hiện tại: ${result.streak}</p>
+`;
+
+}catch(e){
+document.getElementById("output").innerHTML="Lỗi lấy API";
+}
+
 }
 
 </script>
